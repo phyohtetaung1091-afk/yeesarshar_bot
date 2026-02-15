@@ -2,73 +2,101 @@ import logging
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters, ConversationHandler
 
-# Error Log မှတ်တမ်းကြည့်ရန်
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
-)
+# Logging ကို သတ်မှတ်ခြင်း
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# အဆင့်များကို သတ်မှတ်ခြင်း
-GENDER, AGE, PHOTO = range(3)
+# State အဆင့်ဆင့်သတ်မှတ်ချက်များ
+GENDER, AGE, CITY, PHOTO, DISCOVERY = range(5)
+
+# အချက်အလက်သိမ်းဆည်းရန် (လောလောဆယ် Temporary Database အဖြစ်သုံးထားသည်)
+users_db = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    welcome_text = (
-        "🇲🇲 YeeSarShar Bot မှ ကြိုဆိုပါတယ်!\n\n"
-        "ဒီ Bot လေးဟာ မြန်မာလူမျိုးတွေအချင်းချင်း စိတ်တူကိုယ်တူ "
-        "သူငယ်ချင်းအသစ်တွေ ရှာဖွေဖို့ သီးသန့်ဖြစ်ပါတယ်။\n\n"
-        "စတင်ဖို့အတွက် သင်က ဘယ်သူလဲဆိုတာ အရင်ရွေးပေးပါဦး။"
-    )
     reply_keyboard = [['ယောင်္ကျားလေး 👦', 'မိန်းကလေး 👧']]
-    
     await update.message.reply_text(
-        welcome_text,
-        reply_markup=ReplyKeyboardMarkup(
-            reply_keyboard, one_time_keyboard=True, resize_keyboard=True
-        ),
+        "🇲🇲 YeeSarShar (YSS) မှ ကြိုဆိုပါတယ်!\n\n"
+        "စတင်ဖို့အတွက် သင်က ဘယ်သူလဲဆိုတာ အရင်ရွေးပေးပါဦး။",
+        reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True),
     )
     return GENDER
 
-async def gender_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_gender = update.message.text
-    context.user_data['gender'] = user_gender
-    
-    await update.message.reply_text(
-        f"ဟုတ်ကဲ့ {user_gender} လေးခင်ဗျာ။\n\nသင့်ရဲ့ အသက်ကို ဂဏန်းနဲ့ (ဥပမာ- ၂၀) လို့ ရိုက်ထည့်ပေးပါဦး။",
-        reply_markup=ReplyKeyboardRemove(),
-    )
+async def gender(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['gender'] = update.message.text
+    await update.message.reply_text("သင့်အသက်ကို ဂဏန်းနဲ့ ရိုက်ထည့်ပေးပါ (ဥပမာ- ၂၀)။", reply_markup=ReplyKeyboardRemove())
     return AGE
 
-async def age_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_age = update.message.text
-    context.user_data['age'] = user_age
-    
-    await update.message.reply_text(
-        "မှတ်တမ်းတင်လို့ ပြီးပါပြီ! ✅\n\n"
-        "အခုဆိုရင် သင့်ကို စိတ်ဝင်စားမယ့်သူတွေဆီ သင့်ပရိုဖိုင်ကို ပို့ပေးတော့မှာဖြစ်ပါတယ်။ "
-        "(မှတ်ချက် - နောက်အဆင့်မှာ ဓာတ်ပုံတင်ခြင်းနဲ့ လူရှာခြင်းတွေကို ထည့်သွင်းပေးသွားမှာပါ)"
-    )
-    return ConversationHandler.END
+async def age(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['age'] = update.message.text
+    await update.message.reply_text("သင်ဘယ်မြို့မှာ နေပါသလဲ? (ဥပမာ- ရန်ကုန်)။")
+    return CITY
 
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text('Bye! နောက်မှ ပြန်ဆုံကြမယ်။', reply_markup=ReplyKeyboardRemove())
-    return ConversationHandler.END
+async def city(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['city'] = update.message.text
+    await update.message.reply_text("နောက်ဆုံးအဆင့်အနေနဲ့ သင့်ရဲ့ ဓာတ်ပုံတစ်ပုံ ပို့ပေးပါ။ 📸")
+    return PHOTO
+
+async def photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
+    photo_file_id = update.message.photo[-1].file_id
+    
+    # User အချက်အလက်သိမ်းခြင်း
+    users_db[user.id] = {
+        'name': user.first_name,
+        'gender': context.user_data['gender'],
+        'age': context.user_data['age'],
+        'city': context.user_data['city'],
+        'photo': photo_file_id
+    }
+    
+    await update.message.reply_text("✅ မှတ်ပုံတင်ပြီးပါပြီ! အခု တခြားသူတွေကို စတင်ရှာဖွေလို့ရပါပြီ။")
+    return await show_someone(update, context)
+
+async def show_someone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    current_user_id = update.effective_user.id
+    target_user = None
+    
+    # မိမိမဟုတ်သော တခြားသူတစ်ယောက်ကို ရှာခြင်း
+    for uid, data in users_db.items():
+        if uid != current_user_id:
+            target_user = data
+            break
+            
+    if target_user:
+        caption = f"👤 နာမည်: {target_user['name']}\n🎂 အသက်: {target_user['age']}\n📍 မြို့: {target_user['city']}"
+        reply_keyboard = [['❤️ Like', '👎 Next']]
+        await update.message.reply_photo(
+            photo=target_user['photo'],
+            caption=caption,
+            reply_markup=ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True)
+        )
+        return DISCOVERY
+    else:
+        await update.message.reply_text("လောလောဆယ် လူအသစ်မရှိသေးပါဘူး။ ခဏနေမှ ပြန်လာခဲ့ပါ! /start ကို ပြန်နှိပ်နိုင်ပါတယ်။")
+        return ConversationHandler.END
+
+async def handle_discovery(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    choice = update.message.text
+    if choice == '❤️ Like':
+        await update.message.reply_text("သဘောကျကြောင်း အကြောင်းကြားလိုက်ပါပြီ! 🥰")
+    
+    return await show_someone(update, context)
 
 if __name__ == '__main__':
-    # သင်ပေးထားတဲ့ Token ကို ဖြည့်စွက်ထားပါတယ်
     TOKEN = "8529724118:AAH5DOSQ0Hc8OkB-a5WJVf6XPEVSvIVI-Lo"
-    
-    application = ApplicationBuilder().token(TOKEN).build()
-    
-    # စကားပြောခန်း အဆင့်ဆင့် ထိန်းချုပ်ခြင်း
+    app = ApplicationBuilder().token(TOKEN).build()
+
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
-            GENDER: [MessageHandler(filters.Regex('^(ယောင်္ကျားလေး 👦|မိန်းကလေး 👧)$'), gender_choice)],
-            AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, age_input)],
+            GENDER: [MessageHandler(filters.TEXT & ~filters.COMMAND, gender)],
+            AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, age)],
+            CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, city)],
+            PHOTO: [MessageHandler(filters.PHOTO, photo)],
+            DISCOVERY: [MessageHandler(filters.Regex('^(❤️ Like|👎 Next)$'), handle_discovery)],
         },
-        fallbacks=[CommandHandler('cancel', cancel)],
+        fallbacks=[CommandHandler('start', start)],
     )
-    
-    application.add_handler(conv_handler)
-    
-    print("Bot is running...")
-    application.run_polling()
+
+    app.add_handler(conv_handler)
+    print("Bot starting...")
+    app.run_polling()
